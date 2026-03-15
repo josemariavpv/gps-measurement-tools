@@ -472,14 +472,6 @@ class GnssAnalysisApp:
         if path:
             self._out_dir_var.set(path)
 
-    def _browse_out_dir(self):
-        path = filedialog.askdirectory(
-            title='Select output directory',
-            initialdir=self._out_dir_var.get(),
-        )
-        if path:
-            self._out_dir_var.set(path)
-
     def _browse_rinex_file(self):
         path = filedialog.askopenfilename(
             title='Select RINEX observation file',
