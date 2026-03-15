@@ -37,12 +37,20 @@ import sys
 import queue
 import threading
 import traceback
+import importlib
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 import matplotlib
 from matplotlib.figure import Figure
+
+# ---------------------------------------------------------------------------
+# Path constants – needed so sibling modules can be imported whether this
+# file is run as a standalone script *or* loaded as part of the package.
+# ---------------------------------------------------------------------------
+_HERE     = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.normpath(os.path.join(_HERE, '..', '..'))
 
 # ---------------------------------------------------------------------------
 # Colour palette – matches the look of the original MATLAB app
@@ -440,28 +448,36 @@ class GnssAnalysisApp:
 
     def _run_pipeline(self, dir_name, file_name, out_dir, param):
         """Execute each pipeline stage and update the plot tabs."""
-        import sys
-        _repo = os.path.join(os.path.dirname(__file__), '..', '..')
-        if _repo not in sys.path:
-            sys.path.insert(0, _repo)
+        # Ensure repo root is on sys.path so importlib can find the package
+        # regardless of how the app was launched (standalone script or package).
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
 
         import numpy as np
 
-        from .set_data_filter       import set_data_filter
-        from .read_gnss_logger      import read_gnss_logger
-        from .gps2utc               import gps2utc
-        from .get_nasa_hourly_ephemeris import get_nasa_hourly_ephemeris
-        from .process_gnss_meas     import process_gnss_meas
-        from .gps_wls_pvt           import gps_wls_pvt
-        from .process_adr           import process_adr
-        from .gps_adr_residuals     import gps_adr_residuals
-        from .plot_pseudoranges     import plot_pseudoranges
-        from .plot_pseudorange_rates import plot_pseudorange_rates
-        from .plot_cno              import plot_cno
-        from .plot_pvt              import plot_pvt
-        from .plot_pvt_states       import plot_pvt_states
-        from .plot_adr              import plot_adr
-        from .plot_adr_resids       import plot_adr_resids
+        # Use importlib so imports work both when running as `python
+        # gnss_analysis_app.py` (no parent package) and when imported as
+        # `opensource.python.gnss_analysis_app` (package context).
+        _pkg = __package__ or 'opensource.python'
+
+        def _im(name):
+            return importlib.import_module('.' + name, package=_pkg)
+
+        set_data_filter         = _im('set_data_filter').set_data_filter
+        read_gnss_logger        = _im('read_gnss_logger').read_gnss_logger
+        gps2utc                 = _im('gps2utc').gps2utc
+        get_nasa_hourly_ephemeris = _im('get_nasa_hourly_ephemeris').get_nasa_hourly_ephemeris
+        process_gnss_meas       = _im('process_gnss_meas').process_gnss_meas
+        gps_wls_pvt             = _im('gps_wls_pvt').gps_wls_pvt
+        process_adr             = _im('process_adr').process_adr
+        gps_adr_residuals       = _im('gps_adr_residuals').gps_adr_residuals
+        plot_pseudoranges       = _im('plot_pseudoranges').plot_pseudoranges
+        plot_pseudorange_rates  = _im('plot_pseudorange_rates').plot_pseudorange_rates
+        plot_cno                = _im('plot_cno').plot_cno
+        plot_pvt                = _im('plot_pvt').plot_pvt
+        plot_pvt_states         = _im('plot_pvt_states').plot_pvt_states
+        plot_adr                = _im('plot_adr').plot_adr
+        plot_adr_resids         = _im('plot_adr_resids').plot_adr_resids
 
         # 1. Read log file
         self._log('info', 'Reading log file …')
@@ -599,6 +615,6 @@ def main():
 
 if __name__ == '__main__':
     # Allow running as  python gnss_analysis_app.py
-    _repo = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
-    sys.path.insert(0, _repo)
+    if _REPO_ROOT not in sys.path:
+        sys.path.insert(0, _REPO_ROOT)
     main()
