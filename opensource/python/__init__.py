@@ -62,6 +62,7 @@ from .plot_pvt                import plot_pvt
 from .plot_pvt_states         import plot_pvt_states
 from .plot_adr                import plot_adr
 from .plot_adr_resids         import plot_adr_resids
+from .gnss_analysis_app       import GnssAnalysisApp
 
 __all__ = [
     'GpsConstants', 'GnssThresholds',
@@ -78,4 +79,5 @@ __all__ = [
     'process_adr', 'gps_adr_residuals',
     'plot_pseudoranges', 'plot_pseudorange_rates', 'plot_cno',
     'plot_pvt', 'plot_pvt_states', 'plot_adr', 'plot_adr_resids',
+    'GnssAnalysisApp',
 ]

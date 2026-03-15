@@ -600,6 +600,10 @@ class TestLeapSeconds(unittest.TestCase):
         start of 2017-01-01.  The table entry is therefore [2017, 1, 1, 0, 0, 0].
         Between 2015-07-01 and 2017-01-01 (exclusive) there are 17 leap seconds.
         After 2017-01-01 there are 18 leap seconds.
+
+        Note: no new leap seconds have been inserted between 2017 and 2026.
+        The CGPM voted in November 2022 to eliminate leap seconds by 2035.
+        GPS-UTC remains 18 s as of 2026.
         """
         ls_mid_2016 = self.ls(np.array([[2016, 7, 2, 0, 0, 0]]))
         self.assertEqual(ls_mid_2016[0], 17,

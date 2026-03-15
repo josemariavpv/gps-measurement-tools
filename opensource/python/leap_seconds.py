@@ -25,6 +25,8 @@ from .julian_day import julian_day
 
 # UTC table: each row is the UTC time right after a new leap second occurred.
 # LATEST LEAP SECOND IN THE TABLE = 31 Dec 2016. On 1 Jan 2017: GPS-UTC=18s
+# No further leap seconds have been inserted between 2017 and 2026.
+# (The CGPM voted in November 2022 to eliminate leap seconds by 2035.)
 # See IERS Bulletin C, https://hpiers.obspm.fr/iers/bul/bulc/bulletinc.dat
 _UTC_TABLE = np.array([
     [1982, 1, 1, 0, 0, 0],
