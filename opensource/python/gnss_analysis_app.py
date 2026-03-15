@@ -565,12 +565,26 @@ class GnssAnalysisApp:
 
         Returns the return value of plot_fn (e.g. the ``colors`` array).
         """
+        from matplotlib._pylab_helpers import Gcf
+        from matplotlib.backend_bases import FigureManagerBase
+
         fig = self._figures[tab_name]
         fig.clf()
 
-        # Make this figure the current matplotlib figure so plot_fn
-        # can call plt.gca() / plt.gcf() and target it correctly.
-        self._plt.figure(fig.number)
+        # Make this figure the current matplotlib figure so plot_fn can call
+        # plt.gcf() / plt.gca() and target the correct embedded figure.
+        # Figures created directly with Figure() (not via plt.figure()) are
+        # not registered with pyplot and have no .number attribute in modern
+        # matplotlib.  We register a headless FigureManagerBase (no extra Tk
+        # window) so that Gcf.get_active() returns our figure.
+        # _set_new_active_manager also wires up _cidgcf so Gcf.destroy_all
+        # can clean up properly at interpreter shutdown.
+        if not hasattr(fig.canvas, '_embed_manager'):
+            fig.canvas._embed_manager = FigureManagerBase(
+                fig.canvas, _TAB_NAMES.index(tab_name) + 1
+            )
+        Gcf._set_new_active_manager(fig.canvas._embed_manager)
+
         result = plot_fn(*args)
         fig.canvas.draw_idle()
 
