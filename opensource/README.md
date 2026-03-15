@@ -13,6 +13,39 @@ This code is maintained on GitHub at the following link:
 
 https://github.com/google/gps-measurement-tools
 
+# Graphical User Interfaces
+
+Two graphical interfaces are available so you can run the tools without
+editing any script files:
+
+## MATLAB GUI
+
+Open the GUI from the MATLAB Command Window:
+
+```matlab
+addpath('~/gpstools/opensource');   % use your actual path
+ProcessGnssMeasGUI
+```
+
+A window will appear where you can browse for the data directory and log file,
+optionally enter a known true WGS84 position, and click **Run Processing** to
+run the full pipeline and display all the standard plots.
+
+## Python GUI (requires MATLAB)
+
+A Python/Tkinter desktop application is provided in `opensource/python/`:
+
+```bash
+python3 opensource/python/app.py
+```
+
+Requires Python 3.7 or later (`tkinter` is included in the standard library).
+MATLAB must be installed and on your `PATH` for one-click processing.  If
+MATLAB is not on the PATH the GUI displays the equivalent MATLAB commands to
+run manually.  See `opensource/python/README.md` for details.
+
+---
+
 # Matlab
 
 ## Initial setup:
