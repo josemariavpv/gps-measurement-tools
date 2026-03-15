@@ -31,8 +31,6 @@ Open Source code for processing Android GNSS Measurements
 import os
 import sys
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')  # non-interactive backend; change to 'TkAgg' etc. if desired
 import matplotlib.pyplot as plt
 
 # -------------------------------------------------------------------------
@@ -109,17 +107,14 @@ def run(dir_name=DIR_NAME, pr_file_name=PR_FILE_NAME, param=None):
     fig1 = plt.figure()
     colors = plot_pseudoranges(gnss_meas, pr_file_name)
     fig1.savefig(os.path.join(dir_name, 'pseudoranges.png'), dpi=150)
-    plt.close(fig1)
 
     fig2 = plt.figure()
     plot_pseudorange_rates(gnss_meas, pr_file_name, colors)
     fig2.savefig(os.path.join(dir_name, 'pseudorange_rates.png'), dpi=150)
-    plt.close(fig2)
 
     fig3 = plt.figure()
     plot_cno(gnss_meas, pr_file_name, colors)
     fig3.savefig(os.path.join(dir_name, 'cno.png'), dpi=150)
-    plt.close(fig3)
 
     # ---- WLS PVT ------------------------------------------------------------
     gps_pvt = gps_wls_pvt(gnss_meas, all_gps_eph)
@@ -129,12 +124,10 @@ def run(dir_name=DIR_NAME, pr_file_name=PR_FILE_NAME, param=None):
     ts = 'Raw Pseudoranges, Weighted Least Squares solution'
     plot_pvt(gps_pvt, pr_file_name, param.get('llaTrueDegDegM'), ts)
     fig4.savefig(os.path.join(dir_name, 'pvt.png'), dpi=150)
-    plt.close(fig4)
 
     fig5 = plt.figure()
     plot_pvt_states(gps_pvt, pr_file_name)
     fig5.savefig(os.path.join(dir_name, 'pvt_states.png'), dpi=150)
-    plt.close(fig5)
 
     # ---- ADR ----------------------------------------------------------------
     adr_m = gnss_meas['AdrM']
@@ -144,7 +137,6 @@ def run(dir_name=DIR_NAME, pr_file_name=PR_FILE_NAME, param=None):
         fig6 = plt.figure()
         plot_adr(gnss_meas, pr_file_name, colors)
         fig6.savefig(os.path.join(dir_name, 'adr.png'), dpi=150)
-        plt.close(fig6)
 
         adr_resid = gps_adr_residuals(
             gnss_meas, all_gps_eph,
@@ -153,8 +145,8 @@ def run(dir_name=DIR_NAME, pr_file_name=PR_FILE_NAME, param=None):
         fig7 = plt.figure()
         plot_adr_resids(adr_resid, gnss_meas, pr_file_name, colors)
         fig7.savefig(os.path.join(dir_name, 'adr_resids.png'), dpi=150)
-        plt.close(fig7)
 
+    plt.show()
     return gnss_meas, gps_pvt
 
 
