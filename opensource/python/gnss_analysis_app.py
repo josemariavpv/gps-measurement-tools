@@ -89,6 +89,18 @@ _TAB_NAMES = [
     'ADR Residuals',
 ]
 
+# RINEX quality analysis tabs (added separately from the main pipeline tabs)
+_RINEX_TAB_NAMES = [
+    'Visibility',
+    'Availability',
+    'RINEX C/N0',
+    'Cycle Slips',
+]
+
+# Default demo RINEX observation file
+_DEMO_RINEX = os.path.join(os.path.dirname(__file__), '..', 'demoFiles',
+                           'demo_obs.rnx')
+
 
 # ===========================================================================
 # Main Application
@@ -118,6 +130,8 @@ class GnssAnalysisApp:
         self._msg_queue: queue.Queue = queue.Queue()
         self._figures: dict[str, Figure] = {}
         self._canvases: dict[str, FigureCanvasTkAgg] = {}
+        self._rinex_figures: dict[str, Figure] = {}
+        self._rinex_canvases: dict[str, FigureCanvasTkAgg] = {}
 
         self._build_ui()
         self._poll_message_queue()
@@ -149,10 +163,22 @@ class GnssAnalysisApp:
         content.add(left, minsize=240)
         self._build_left_panel(left)
 
-        # Right: notebook (plots) + log
+        # Right: top-level notebook with two tabs – main pipeline and RINEX QC
         right = tk.Frame(content, bg=_BG)
         content.add(right, minsize=600)
-        self._build_plot_notebook(right)
+
+        # Top-level notebook: "GNSS Pipeline" | "RINEX Quality"
+        self._top_notebook = ttk.Notebook(right)
+        self._top_notebook.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 0))
+
+        pipeline_frame = tk.Frame(self._top_notebook, bg=_BG)
+        self._top_notebook.add(pipeline_frame, text='GNSS Pipeline')
+        self._build_plot_notebook(pipeline_frame)
+
+        rinex_frame = tk.Frame(self._top_notebook, bg=_BG)
+        self._top_notebook.add(rinex_frame, text='RINEX Quality')
+        self._build_rinex_notebook(rinex_frame)
+
         self._build_log_panel(right)
 
         # Bottom status bar
@@ -230,6 +256,34 @@ class GnssAnalysisApp:
             bg=_BG, fg='#777', font=('Helvetica', 8),
             anchor=tk.W,
         ).pack(fill=tk.X, padx=8)
+
+        ttk.Separator(parent, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=8, pady=8)
+
+        # --- Section: RINEX Quality Analysis ----------------------------
+        self._section_label(parent, 'RINEX Quality')
+
+        tk.Label(parent, text='RINEX obs file:', bg=_BG,
+                 font=_FONT_LABEL, anchor=tk.W).pack(fill=tk.X, **pad)
+        row_rnx = tk.Frame(parent, bg=_BG)
+        row_rnx.pack(fill=tk.X, padx=8)
+        self._rinex_file_var = tk.StringVar(value=os.path.abspath(_DEMO_RINEX))
+        tk.Entry(
+            row_rnx, textvariable=self._rinex_file_var,
+            bg=_ENTRY_BG, font=_FONT_MONO, width=20,
+        ).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        tk.Button(
+            row_rnx, text='…', width=3,
+            command=self._browse_rinex_file,
+        ).pack(side=tk.RIGHT, padx=(4, 0))
+
+        self._rinex_btn = tk.Button(
+            parent, text='📊  Analyse RINEX',
+            bg='#2980B9', fg=_BTN_FG,
+            font=('Helvetica', 11, 'bold'),
+            relief=tk.FLAT, pady=6,
+            command=self._on_rinex_analyse,
+        )
+        self._rinex_btn.pack(fill=tk.X, padx=8, pady=4)
 
         ttk.Separator(parent, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=8, pady=8)
 
@@ -316,6 +370,39 @@ class GnssAnalysisApp:
             self._figures[name]  = fig
             self._canvases[name] = canvas
 
+    # ---- RINEX quality notebook ----------------------------------------
+
+    def _build_rinex_notebook(self, parent: tk.Frame):
+        self._rinex_notebook = ttk.Notebook(parent)
+        self._rinex_notebook.pack(fill=tk.BOTH, expand=True, padx=4, pady=(4, 0))
+
+        for name in _RINEX_TAB_NAMES:
+            frame = tk.Frame(self._rinex_notebook, bg=_BG)
+            self._rinex_notebook.add(frame, text=name)
+
+            fig = Figure(figsize=(8, 4), dpi=100, facecolor='white')
+            ax = fig.add_subplot(111)
+            ax.set_facecolor('#F8F8F8')
+            ax.text(
+                0.5, 0.5, f'{name}\n(load a RINEX obs file to populate)',
+                ha='center', va='center',
+                transform=ax.transAxes,
+                color='#AAAAAA', fontsize=12,
+            )
+            ax.axis('off')
+
+            canvas = self._FigureCanvasTkAgg(fig, master=frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+            toolbar_frame = tk.Frame(frame, bg=_BG)
+            toolbar_frame.pack(fill=tk.X)
+            toolbar = self._NavigationToolbar2Tk(canvas, toolbar_frame)
+            toolbar.update()
+
+            self._rinex_figures[name]  = fig
+            self._rinex_canvases[name] = canvas
+
     # ---- Log panel ----------------------------------------------------
 
     def _build_log_panel(self, parent: tk.Frame):
@@ -384,6 +471,143 @@ class GnssAnalysisApp:
         )
         if path:
             self._out_dir_var.set(path)
+
+    def _browse_out_dir(self):
+        path = filedialog.askdirectory(
+            title='Select output directory',
+            initialdir=self._out_dir_var.get(),
+        )
+        if path:
+            self._out_dir_var.set(path)
+
+    def _browse_rinex_file(self):
+        path = filedialog.askopenfilename(
+            title='Select RINEX observation file',
+            filetypes=[
+                ('RINEX obs files', '*.rnx *.obs *.??o *.RNX *.OBS'),
+                ('All files', '*.*'),
+            ],
+            initialdir=os.path.abspath(_DEMO_DIR),
+        )
+        if path:
+            self._rinex_file_var.set(path)
+
+    # ------------------------------------------------------------------
+    # RINEX quality analysis
+    # ------------------------------------------------------------------
+
+    def _on_rinex_analyse(self):
+        """Start RINEX quality analysis in a background thread."""
+        if self._processing:
+            return
+        rinex_path = self._rinex_file_var.get().strip()
+        if not os.path.isfile(rinex_path):
+            messagebox.showerror(
+                'File not found',
+                f'Cannot find RINEX obs file:\n{rinex_path}',
+            )
+            return
+
+        self._processing = True
+        self._rinex_btn.config(state=tk.DISABLED)
+        self._progress.start(10)
+        self._log('info', f'Analysing RINEX obs: {os.path.basename(rinex_path)} …')
+
+        t = threading.Thread(
+            target=self._rinex_worker,
+            args=(rinex_path,),
+            daemon=True,
+        )
+        t.start()
+
+    def _rinex_worker(self, rinex_path):
+        """Run RINEX quality analysis pipeline in a background thread."""
+        try:
+            self._run_rinex_pipeline(rinex_path)
+        except Exception:
+            tb = traceback.format_exc()
+            self._log('error', 'RINEX analysis failed with exception:')
+            for line in tb.splitlines():
+                self._log('error', '  ' + line)
+        finally:
+            self._msg_queue.put(('_done_', ''))
+        self.root.after(0, self._on_rinex_done)
+
+    def _on_rinex_done(self):
+        self._processing = False
+        self._progress.stop()
+        self._rinex_btn.config(state=tk.NORMAL)
+        # Switch the top-level notebook to the RINEX Quality tab
+        self._top_notebook.select(1)
+
+    def _run_rinex_pipeline(self, rinex_path):
+        """Read RINEX obs file and populate the four quality tabs."""
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
+
+        _pkg = __package__ or 'opensource.python'
+
+        def _im(name):
+            return importlib.import_module('.' + name, package=_pkg)
+
+        read_rinex_obs          = _im('read_rinex_obs').read_rinex_obs
+        plot_rinex_visibility   = _im('plot_rinex_quality').plot_rinex_visibility
+        plot_rinex_availability = _im('plot_rinex_quality').plot_rinex_availability
+        plot_rinex_cn0          = _im('plot_rinex_quality').plot_rinex_cn0
+        plot_rinex_cycle_slips  = _im('plot_rinex_quality').plot_rinex_cycle_slips
+
+        self._log('info', 'Reading RINEX observation file …')
+        rinex_obs = read_rinex_obs(rinex_path)
+        if rinex_obs is None:
+            self._log('error', 'Failed to parse RINEX obs file.')
+            return
+
+        file_name = os.path.basename(rinex_path)
+        n_ep  = len(rinex_obs['times'])
+        n_sv  = len(rinex_obs['sats'])
+        dur_m = rinex_obs['times'][-1] / 60.0 if n_ep > 1 else 0.0
+        self._log(
+            'info',
+            f'  RINEX {rinex_obs["version"]:.2f}: '
+            f'{n_ep} epochs, {n_sv} satellites, {dur_m:.1f} min',
+        )
+
+        self._log('info', 'Plotting satellite visibility …')
+        self._render_rinex_plot('Visibility', plot_rinex_visibility,
+                                rinex_obs, file_name)
+
+        self._log('info', 'Plotting observable availability …')
+        self._render_rinex_plot('Availability', plot_rinex_availability,
+                                rinex_obs, file_name)
+
+        self._log('info', 'Plotting C/N0 …')
+        self._render_rinex_plot('RINEX C/N0', plot_rinex_cn0,
+                                rinex_obs, file_name)
+
+        self._log('info', 'Plotting cycle slips …')
+        self._render_rinex_plot('Cycle Slips', plot_rinex_cycle_slips,
+                                rinex_obs, file_name)
+
+        self._log('info', '✔  RINEX analysis complete.')
+
+    def _render_rinex_plot(self, tab_name: str, plot_fn, *args):
+        """Like _render_plot but for the RINEX quality notebook."""
+        from matplotlib._pylab_helpers import Gcf
+        from matplotlib.backend_bases import FigureManagerBase
+
+        fig = self._rinex_figures[tab_name]
+        fig.clf()
+
+        if not hasattr(fig.canvas, '_embed_manager'):
+            fig.canvas._embed_manager = FigureManagerBase(
+                fig.canvas,
+                len(_TAB_NAMES) + _RINEX_TAB_NAMES.index(tab_name) + 1,
+            )
+        Gcf._set_new_active_manager(fig.canvas._embed_manager)
+
+        plot_fn(*args)
+        fig.canvas.draw_idle()
+        self.root.after(0, lambda f=tab_name: self._rinex_canvases[f].draw())
 
     # ------------------------------------------------------------------
     # Processing
@@ -611,6 +835,19 @@ class GnssAnalysisApp:
             )
             ax.axis('off')
             self._canvases[name].draw()
+        for name in _RINEX_TAB_NAMES:
+            fig = self._rinex_figures[name]
+            fig.clf()
+            ax = fig.add_subplot(111)
+            ax.text(
+                0.5, 0.5,
+                f'{name}\n(load a RINEX obs file to populate)',
+                ha='center', va='center',
+                transform=ax.transAxes,
+                color='#AAAAAA', fontsize=12,
+            )
+            ax.axis('off')
+            self._rinex_canvases[name].draw()
         self._log('info', 'Plots cleared.')
 
     def mainloop(self):

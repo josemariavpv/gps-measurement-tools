@@ -63,7 +63,15 @@ from .plot_pvt                import plot_pvt
 from .plot_pvt_states         import plot_pvt_states
 from .plot_adr                import plot_adr
 from .plot_adr_resids         import plot_adr_resids
-from .gnss_analysis_app       import GnssAnalysisApp
+from .read_rinex_obs          import read_rinex_obs, get_signal_strength
+from .plot_rinex_quality      import (plot_rinex_visibility,
+                                      plot_rinex_availability,
+                                      plot_rinex_cn0,
+                                      plot_rinex_cycle_slips)
+try:
+    from .gnss_analysis_app       import GnssAnalysisApp
+except ImportError:  # tkinter not available (headless / CI environment)
+    GnssAnalysisApp = None  # type: ignore[assignment,misc]
 
 __all__ = [
     'GpsConstants', 'GnssThresholds',
@@ -81,5 +89,8 @@ __all__ = [
     'process_adr', 'gps_adr_residuals',
     'plot_pseudoranges', 'plot_pseudorange_rates', 'plot_cno',
     'plot_pvt', 'plot_pvt_states', 'plot_adr', 'plot_adr_resids',
+    'read_rinex_obs', 'get_signal_strength',
+    'plot_rinex_visibility', 'plot_rinex_availability',
+    'plot_rinex_cn0', 'plot_rinex_cycle_slips',
     'GnssAnalysisApp',
 ]

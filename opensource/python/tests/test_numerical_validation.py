@@ -619,5 +619,140 @@ class TestLeapSeconds(unittest.TestCase):
         self.assertEqual(ls[0], 17)
 
 
+# ===========================================================================
+# 9. ReadRinexObs / read_rinex_obs
+# ===========================================================================
+
+_DEMO_RINEX_OBS = os.path.join(_DEMO_DIR, 'demo_obs.rnx')
+
+
+class TestReadRinexObs(unittest.TestCase):
+    """Verify read_rinex_obs() against the synthetic RINEX 3 demo file."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.exists(_DEMO_RINEX_OBS):
+            raise unittest.SkipTest(f'Demo RINEX obs file not found: {_DEMO_RINEX_OBS}')
+        from python.read_rinex_obs import read_rinex_obs
+        cls.obs = read_rinex_obs(_DEMO_RINEX_OBS)
+
+    def test_not_none(self):
+        """Parser must return a non-None dict for the demo RINEX file."""
+        self.assertIsNotNone(self.obs)
+
+    def test_version(self):
+        """RINEX version must be parsed as 3.03."""
+        self.assertAlmostEqual(self.obs['version'], 3.03, places=2)
+
+    def test_epoch_count(self):
+        """Demo file has exactly 60 epochs at 30-second intervals."""
+        self.assertEqual(len(self.obs['times']), 60)
+
+    def test_epoch_spacing(self):
+        """Epoch interval must be 30 seconds (median)."""
+        dt = float(np.median(np.diff(self.obs['times'])))
+        self.assertAlmostEqual(dt, 30.0, delta=0.1)
+
+    def test_satellite_count(self):
+        """Demo file has 10 satellites: 5 GPS + 3 Galileo + 2 GLONASS."""
+        self.assertEqual(len(self.obs['sats']), 10)
+
+    def test_constellation_coverage(self):
+        """All three constellations (G, E, R) must be present."""
+        sys_chars = {s[0] for s in self.obs['sats']}
+        self.assertIn('G', sys_chars)
+        self.assertIn('E', sys_chars)
+        self.assertIn('R', sys_chars)
+
+    def test_obs_types_gps(self):
+        """GPS should have C1C, L1C, S1C, C5Q, L5Q, S5Q."""
+        gps_codes = set(self.obs['obs_types'].get('G', []))
+        for code in ('C1C', 'L1C', 'S1C', 'C5Q', 'L5Q', 'S5Q'):
+            self.assertIn(code, gps_codes)
+
+    def test_pseudorange_range(self):
+        """GPS pseudorange (C1C) must be ~22 000 km ± 100 m."""
+        pr = self.obs['data']['G01']['C1C']
+        mean_pr = float(np.nanmean(pr))
+        self.assertAlmostEqual(mean_pr, 22_000_000.0, delta=100.0)
+
+    def test_signal_strength_range(self):
+        """C/N0 (S1C) must be between 25 and 60 dB-Hz for GPS sats."""
+        for sv in ('G01', 'G02'):
+            s1c = self.obs['data'][sv]['S1C']
+            valid = s1c[np.isfinite(s1c)]
+            self.assertTrue(np.all(valid > 25.0),
+                            msg=f'{sv} S1C has values ≤ 25 dB-Hz')
+            self.assertTrue(np.all(valid < 60.0),
+                            msg=f'{sv} S1C has values ≥ 60 dB-Hz')
+
+    def test_cycle_slip_flag(self):
+        """G01 L1C must have LLI=1 at epoch 35 (injected slip)."""
+        lli_arr = self.obs['lli']['G01']['L1C']
+        self.assertEqual(int(lli_arr[35] & 0x01), 1,
+                         'Expected LLI slip at epoch 35 for G01')
+        # All other epochs must have no slip
+        no_slip = lli_arr.copy()
+        no_slip[35] = 0
+        self.assertTrue(np.all((no_slip & 0x01) == 0),
+                        'Unexpected LLI slips in G01 L1C')
+
+    def test_gap_in_g17(self):
+        """G17 must be absent for epochs 20–29 (10-epoch gap)."""
+        c1c = self.obs['data']['G17']['C1C']
+        gap_epochs = np.where(~np.isfinite(c1c))[0]
+        self.assertEqual(set(gap_epochs.tolist()), set(range(20, 30)),
+                         'Expected G17 gap at epochs 20-29')
+
+    def test_times_start_at_zero(self):
+        """times[0] must be 0 (relative to first epoch)."""
+        self.assertEqual(self.obs['times'][0], 0.0)
+
+    def test_datetimes_length(self):
+        """datetimes list length must match times array length."""
+        self.assertEqual(len(self.obs['datetimes']), len(self.obs['times']))
+
+    def test_missing_file(self):
+        """Parser must return None for a non-existent file."""
+        from python.read_rinex_obs import read_rinex_obs
+        result = read_rinex_obs('/nonexistent/path/to/file.rnx')
+        self.assertIsNone(result)
+
+
+class TestGetSignalStrength(unittest.TestCase):
+    """Verify get_signal_strength() helper."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not os.path.exists(_DEMO_RINEX_OBS):
+            raise unittest.SkipTest(f'Demo RINEX obs file not found: {_DEMO_RINEX_OBS}')
+        from python.read_rinex_obs import read_rinex_obs
+        cls.obs = read_rinex_obs(_DEMO_RINEX_OBS)
+
+    def test_returns_s_code(self):
+        """Must return the S1C observable for G01."""
+        from python.read_rinex_obs import get_signal_strength
+        code, arr = get_signal_strength(self.obs, 'G01')
+        self.assertIsNotNone(code)
+        self.assertTrue(code.startswith('S'), f'Expected S code, got {code!r}')
+        self.assertEqual(len(arr), len(self.obs['times']))
+
+    def test_valid_values(self):
+        """Signal-strength values must be finite and in a plausible range."""
+        from python.read_rinex_obs import get_signal_strength
+        _, arr = get_signal_strength(self.obs, 'G01')
+        valid = arr[np.isfinite(arr)]
+        self.assertGreater(len(valid), 0, 'No valid signal-strength values')
+        self.assertTrue(np.all(valid > 20.0))
+        self.assertTrue(np.all(valid < 70.0))
+
+    def test_unknown_satellite(self):
+        """Must return (None, None) for a satellite not in the file."""
+        from python.read_rinex_obs import get_signal_strength
+        code, arr = get_signal_strength(self.obs, 'G99')
+        self.assertIsNone(code)
+        self.assertIsNone(arr)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
