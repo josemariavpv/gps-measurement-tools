@@ -19,6 +19,7 @@ Open Source code for processing Android GNSS Measurements
 # limitations under the License.
 
 import numpy as np
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 
@@ -62,7 +63,7 @@ def plot_pseudoranges(gnss_meas, pr_file_name='', colors=None):
             continue
         t_end = time_s[i_f[-1]]
         (h,) = ax1.plot(time_s, pr_i, '.', markersize=4)
-        color = colors[i] if b_got_colors else np.array(h.get_color())
+        color = colors[i] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
         if not b_got_colors:
             colors[i] = color
         h.set_color(color)

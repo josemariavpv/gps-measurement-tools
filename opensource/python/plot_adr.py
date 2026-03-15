@@ -19,6 +19,7 @@ Open Source code for processing Android GNSS Measurements
 # limitations under the License.
 
 import numpy as np
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 
@@ -67,7 +68,7 @@ def plot_adr(gnss_meas, pr_file_name='', colors=None):
 
         t_end = time_s[i_fi[-1]]
         (h,) = ax1.plot(time_s, adr_j, '.', markersize=4)
-        color = colors[j] if b_got_colors else np.array(h.get_color())
+        color = colors[j] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
         if not b_got_colors:
             colors[j] = color
         h.set_color(color)

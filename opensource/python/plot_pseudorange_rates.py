@@ -19,6 +19,7 @@ Open Source code for processing Android GNSS Measurements
 # limitations under the License.
 
 import numpy as np
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
 
@@ -70,7 +71,7 @@ def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
         if len(i_fi2) > 1:
             dy = np.diff(y_dp) / np.diff(time_s)
             (h,) = ax1.plot(time_s[1:], dy, '.', markersize=4)
-            color = colors[i] if b_got_colors else np.array(h.get_color())
+            color = colors[i] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
             if not b_got_colors:
                 colors[i] = color
             h.set_color(color)
