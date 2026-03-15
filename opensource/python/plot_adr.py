@@ -22,6 +22,8 @@ import numpy as np
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
+from .sv_label import sv_label
+
 
 def plot_adr(gnss_meas, pr_file_name='', colors=None):
     """Plot valid Accumulated Delta Ranges from process_adr().
@@ -46,6 +48,8 @@ def plot_adr(gnss_meas, pr_file_name='', colors=None):
 
     m = len(gnss_meas['Svid'])
     time_s = gnss_meas['FctSeconds'] - gnss_meas['FctSeconds'][0]
+    const_type = gnss_meas.get('ConstellationType',
+                               np.ones(m, dtype=int))
 
     if colors is None or np.asarray(colors).shape != (m, 3):
         colors = np.zeros((m, 3))
@@ -67,16 +71,18 @@ def plot_adr(gnss_meas, pr_file_name='', colors=None):
             continue
 
         t_end = time_s[i_fi[-1]]
-        (h,) = ax1.plot(time_s, adr_j, '.', markersize=4)
+        lbl = sv_label(const_type[j], gnss_meas['Svid'][j])
+        (h,) = ax1.plot(time_s, adr_j, '.', markersize=4, label=lbl)
         color = colors[j] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
         if not b_got_colors:
             colors[j] = color
         h.set_color(color)
-        ax1.text(t_end, adr_j[i_fi[-1]], str(gnss_meas['Svid'][j]),
-                 color=color, fontsize=8)
+        ax1.text(t_end, adr_j[i_fi[-1]], lbl, color=color, fontsize=8)
 
         ax2.plot(time_s, gnss_meas['DelPrMinusAdrM'][:, j],
                  '.', markersize=4, color=color)
+
+    ax1.legend(fontsize=7, ncol=2, loc='upper right', framealpha=0.7)
 
     ax1.set_title('Valid Accumulated Delta Range (= -k*carrier phase) vs time')
     ax1.set_ylabel('(meters)')

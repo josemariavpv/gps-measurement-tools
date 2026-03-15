@@ -35,23 +35,24 @@ def process_gnss_meas(gnss_raw):
     -------
     gnss_meas : dict
         Processed measurements with keys:
-          'FctSeconds'    – (N,) full-cycle time tag (seconds)
-          'ClkDCount'     – (N,) hardware clock discontinuity count
-          'HwDscDelS'     – (N,) clock change during each discontinuity (s)
-          'Svid'          – (M,) all SV IDs found in gnss_raw
-          'AzDeg'         – (M,) azimuth (NaN, filled later)
-          'ElDeg'         – (M,) elevation (NaN, filled later)
-          'tRxSeconds'    – (N, M) time of reception (GPS seconds of week)
-          'tTxSeconds'    – (N, M) time of transmission (GPS seconds of week)
-          'PrM'           – (N, M) pseudoranges (m)
-          'PrSigmaM'      – (N, M) pseudorange std dev (m)
-          'DelPrM'        – (N, M) change in PR while clock is continuous
-          'PrrMps'        – (N, M) pseudorange rate (m/s)
-          'PrrSigmaMps'   – (N, M) PR rate std dev (m/s)
-          'AdrM'          – (N, M) accumulated delta range (m)
-          'AdrSigmaM'     – (N, M) ADR std dev (m)
-          'AdrState'      – (N, M) ADR state flags
-          'Cn0DbHz'       – (N, M) carrier-to-noise (dB-Hz)
+          'FctSeconds'       – (N,) full-cycle time tag (seconds)
+          'ClkDCount'        – (N,) hardware clock discontinuity count
+          'HwDscDelS'        – (N,) clock change during each discontinuity (s)
+          'Svid'             – (M,) all SV IDs found in gnss_raw
+          'ConstellationType'– (M,) Android GnssStatus.CONSTELLATION_* per SV
+          'AzDeg'            – (M,) azimuth (NaN, filled later)
+          'ElDeg'            – (M,) elevation (NaN, filled later)
+          'tRxSeconds'       – (N, M) time of reception (GPS seconds of week)
+          'tTxSeconds'       – (N, M) time of transmission (GPS seconds of week)
+          'PrM'              – (N, M) pseudoranges (m)
+          'PrSigmaM'         – (N, M) pseudorange std dev (m)
+          'DelPrM'           – (N, M) change in PR while clock is continuous
+          'PrrMps'           – (N, M) pseudorange rate (m/s)
+          'PrrSigmaMps'      – (N, M) PR rate std dev (m/s)
+          'AdrM'             – (N, M) accumulated delta range (m)
+          'AdrSigmaM'        – (N, M) ADR std dev (m)
+          'AdrState'         – (N, M) ADR state flags
+          'Cn0DbHz'          – (N, M) carrier-to-noise (dB-Hz)
     """
     gnss_raw = _filter_valid(gnss_raw)
 
@@ -61,24 +62,37 @@ def process_gnss_meas(gnss_raw):
     svid_all = np.unique(gnss_raw['Svid'].astype(int))
     m = len(svid_all)
 
+    # Build per-satellite ConstellationType by taking the first occurrence of
+    # each unique Svid in the raw measurements (default to GPS=1 if absent).
+    const_type_all = np.ones(m, dtype=int)
+    if 'ConstellationType' in gnss_raw:
+        svid_to_const = {}
+        for sv, ct in zip(gnss_raw['Svid'].astype(int),
+                          gnss_raw['ConstellationType'].astype(int)):
+            if sv not in svid_to_const:
+                svid_to_const[sv] = ct
+        for k_sv, sv in enumerate(svid_all):
+            const_type_all[k_sv] = svid_to_const.get(int(sv), 1)
+
     gnss_meas = {
-        'FctSeconds':    fct_seconds,
-        'ClkDCount':     np.zeros(n, dtype=int),
-        'HwDscDelS':     np.zeros(n),
-        'Svid':          svid_all,
-        'AzDeg':         np.full(m, np.nan),
-        'ElDeg':         np.full(m, np.nan),
-        'tRxSeconds':    np.full((n, m), np.nan),
-        'tTxSeconds':    np.full((n, m), np.nan),
-        'PrM':           np.full((n, m), np.nan),
-        'PrSigmaM':      np.full((n, m), np.nan),
-        'DelPrM':        np.full((n, m), np.nan),
-        'PrrMps':        np.full((n, m), np.nan),
-        'PrrSigmaMps':   np.full((n, m), np.nan),
-        'AdrM':          np.full((n, m), np.nan),
-        'AdrSigmaM':     np.full((n, m), np.nan),
-        'AdrState':      np.zeros((n, m)),
-        'Cn0DbHz':       np.full((n, m), np.nan),
+        'FctSeconds':       fct_seconds,
+        'ClkDCount':        np.zeros(n, dtype=int),
+        'HwDscDelS':        np.zeros(n),
+        'Svid':             svid_all,
+        'ConstellationType': const_type_all,
+        'AzDeg':            np.full(m, np.nan),
+        'ElDeg':            np.full(m, np.nan),
+        'tRxSeconds':       np.full((n, m), np.nan),
+        'tTxSeconds':       np.full((n, m), np.nan),
+        'PrM':              np.full((n, m), np.nan),
+        'PrSigmaM':         np.full((n, m), np.nan),
+        'DelPrM':           np.full((n, m), np.nan),
+        'PrrMps':           np.full((n, m), np.nan),
+        'PrrSigmaMps':      np.full((n, m), np.nan),
+        'AdrM':             np.full((n, m), np.nan),
+        'AdrSigmaM':        np.full((n, m), np.nan),
+        'AdrState':         np.zeros((n, m)),
+        'Cn0DbHz':          np.full((n, m), np.nan),
     }
 
     # GPS week number

@@ -22,6 +22,8 @@ import numpy as np
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
+from .sv_label import sv_label
+
 
 def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
     """Plot pseudorange rates from process_gnss_meas().
@@ -41,6 +43,8 @@ def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
     """
     m  = len(gnss_meas['Svid'])
     time_s = gnss_meas['FctSeconds'] - gnss_meas['FctSeconds'][0]
+    const_type = gnss_meas.get('ConstellationType',
+                               np.ones(m, dtype=int))
 
     if colors is None or np.asarray(colors).shape != (m, 3):
         colors = np.zeros((m, 3))
@@ -61,8 +65,9 @@ def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
         i_fi  = np.where(np.isfinite(y_prr))[0]
         if len(i_fi) == 0:
             continue
+        lbl = sv_label(const_type[i], gnss_meas['Svid'][i])
         ax1.plot(time_s, y_prr, color=gray)
-        ax1.text(time_s[i_fi[0]], y_prr[i_fi[0]], str(gnss_meas['Svid'][i]),
+        ax1.text(time_s[i_fi[0]], y_prr[i_fi[0]], lbl,
                  color=gray, ha='right', fontsize=8)
         mean_prr = float(np.mean(y_prr[i_fi]))
 
@@ -70,7 +75,7 @@ def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
         i_fi2 = np.where(np.isfinite(y_dp))[0]
         if len(i_fi2) > 1:
             dy = np.diff(y_dp) / np.diff(time_s)
-            (h,) = ax1.plot(time_s[1:], dy, '.', markersize=4)
+            (h,) = ax1.plot(time_s[1:], dy, '.', markersize=4, label=lbl)
             color = colors[i] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
             if not b_got_colors:
                 colors[i] = color
@@ -78,8 +83,10 @@ def plot_pseudorange_rates(gnss_meas, pr_file_name='', colors=None):
             i_fi3 = np.where(np.isfinite(dy))[0]
             if len(i_fi3) > 0:
                 ax1.text(time_s[1:][i_fi3[-1]], dy[i_fi3[-1]],
-                         str(gnss_meas['Svid'][i]), color=color, fontsize=8)
+                         lbl, color=color, fontsize=8)
                 delta_mean_m[i] = mean_prr - float(np.mean(dy[i_fi3]))
+
+    ax1.legend(fontsize=7, ncol=2, loc='upper right', framealpha=0.7)
 
     ts = 'diff(raw pr)/diff(time) and reported prr'
     ax1.set_title(ts)

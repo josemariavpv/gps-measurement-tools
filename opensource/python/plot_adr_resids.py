@@ -21,6 +21,8 @@ Open Source code for processing Android GNSS Measurements
 import numpy as np
 import matplotlib.pyplot as plt
 
+from .sv_label import sv_label
+
 
 def plot_adr_resids(adr_resid, gnss_meas, pr_file_name='', colors=None):
     """Plot ADR single-difference residuals.
@@ -47,6 +49,17 @@ def plot_adr_resids(adr_resid, gnss_meas, pr_file_name='', colors=None):
 
     b_got_colors = (colors is not None
                     and np.asarray(colors).shape == (m, 3))
+
+    # Build satellite-label lookup from gnss_meas
+    const_type = gnss_meas.get('ConstellationType',
+                               np.ones(len(gnss_meas['Svid']), dtype=int))
+
+    def _sv_lbl(svid_val):
+        j_m = np.where(gnss_meas['Svid'] == svid_val)[0]
+        ct = int(const_type[j_m[0]]) if len(j_m) > 0 else 1
+        return sv_label(ct, svid_val)
+
+    label0 = _sv_lbl(adr_resid['Svid0'])
 
     # Find K satellites with most valid data
     num_valid = np.array([
@@ -76,14 +89,14 @@ def plot_adr_resids(adr_resid, gnss_meas, pr_file_name='', colors=None):
             if len(i_cs) > 0:
                 ax.plot(time_s[i_cs], np.zeros(len(i_cs)), 'xk', markersize=5)
 
-        ax.set_title(f'Svids {svid} - {adr_resid["Svid0"]}')
+        ax.set_title(f'{_sv_lbl(svid)} − {label0}')
         ax.set_ylabel('(meters)')
 
     if axes:
         axes[-1].set_xlabel(f'time (seconds)\n{pr_file_name}')
         axes[0].set_title(
             f'ADR single difference residuals. No iono or tropo correction. '
-            f'Svids {adr_resid["Svid"][j_sorted[0]]} - {adr_resid["Svid0"]}'
+            f'{_sv_lbl(adr_resid["Svid"][j_sorted[0]])} − {label0}'
         )
         ax_lim = axes[0].axis()
         axes[0].text(ax_lim[0], ax_lim[2], ' "x" = declared cycle slip',

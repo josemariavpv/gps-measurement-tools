@@ -27,6 +27,7 @@ Quick-start
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from .sv_label                import sv_label
 from .gps_constants           import GpsConstants
 from .gnss_thresholds         import GnssThresholds
 from .julian_day              import julian_day
@@ -66,6 +67,7 @@ from .gnss_analysis_app       import GnssAnalysisApp
 
 __all__ = [
     'GpsConstants', 'GnssThresholds',
+    'sv_label',
     'julian_day', 'leap_seconds', 'day_of_year', 'compare_versions',
     'utc2gps', 'gps2utc',
     'kepler',

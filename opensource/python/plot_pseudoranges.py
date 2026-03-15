@@ -22,6 +22,8 @@ import numpy as np
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 
+from .sv_label import sv_label
+
 
 def plot_pseudoranges(gnss_meas, pr_file_name='', colors=None):
     """Plot pseudoranges from process_gnss_meas().
@@ -43,6 +45,8 @@ def plot_pseudoranges(gnss_meas, pr_file_name='', colors=None):
     m = len(gnss_meas['Svid'])
     n = len(gnss_meas['FctSeconds'])
     time_s = gnss_meas['FctSeconds'] - gnss_meas['FctSeconds'][0]
+    const_type = gnss_meas.get('ConstellationType',
+                               np.ones(m, dtype=int))
 
     if colors is None or np.asarray(colors).shape != (m, 3):
         colors = np.zeros((m, 3))
@@ -62,19 +66,20 @@ def plot_pseudoranges(gnss_meas, pr_file_name='', colors=None):
         if len(i_f) == 0:
             continue
         t_end = time_s[i_f[-1]]
-        (h,) = ax1.plot(time_s, pr_i, '.', markersize=4)
+        lbl = sv_label(const_type[i], gnss_meas['Svid'][i])
+        (h,) = ax1.plot(time_s, pr_i, '.', markersize=4, label=lbl)
         color = colors[i] if b_got_colors else np.array(mcolors.to_rgb(h.get_color()))
         if not b_got_colors:
             colors[i] = color
         h.set_color(color)
-        ax1.text(t_end, pr_i[i_f[-1]], str(gnss_meas['Svid'][i]),
-                 color=color, fontsize=8)
+        ax1.text(t_end, pr_i[i_f[-1]], lbl, color=color, fontsize=8)
 
         y = pr_i - pr_i[i_f[0]]
-        (h2,) = ax2.plot(time_s, y, '.', markersize=4, color=color)
+        (h2,) = ax2.plot(time_s, y, '.', markersize=4, color=color, label=lbl)
         if len(i_f) > 0:
-            ax2.text(t_end, y[i_f[-1]], str(gnss_meas['Svid'][i]),
-                     color=color, fontsize=8)
+            ax2.text(t_end, y[i_f[-1]], lbl, color=color, fontsize=8)
+
+    ax1.legend(fontsize=7, ncol=2, loc='upper right', framealpha=0.7)
 
     ax1.set_title('Pseudoranges vs time')
     ax1.set_ylabel('(meters)')
