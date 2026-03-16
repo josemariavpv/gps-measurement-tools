@@ -708,6 +708,7 @@ class GnssAnalysisApp:
         read_gnss_logger        = _im('read_gnss_logger').read_gnss_logger
         gps2utc                 = _im('gps2utc').gps2utc
         get_nasa_hourly_ephemeris = _im('get_nasa_hourly_ephemeris').get_nasa_hourly_ephemeris
+        get_galileo_ephemeris   = _im('get_galileo_ephemeris').get_galileo_ephemeris
         process_gnss_meas       = _im('process_gnss_meas').process_gnss_meas
         gps_wls_pvt             = _im('gps_wls_pvt').gps_wls_pvt
         process_adr             = _im('process_adr').process_adr
@@ -742,6 +743,22 @@ class GnssAnalysisApp:
         # 3. Process raw measurements
         self._log('info', 'Processing raw GNSS measurements …')
         gnss_meas = process_gnss_meas(gnss_raw)
+
+        # 3b. Galileo ephemeris – fetched only when Galileo sats are present
+        # (best-effort; graceful fallback on any failure)
+        _CONST_GALILEO = 6
+        all_gal_eph = []
+        const_types = gnss_meas.get('ConstellationType',
+                                    np.ones(len(gnss_meas['Svid']), dtype=int))
+        if _CONST_GALILEO in const_types:
+            self._log('info', 'Galileo satellites detected – fetching Galileo ephemeris …')
+            all_gal_eph, _ = get_galileo_ephemeris(utc_time, dir_name)
+            if all_gal_eph:
+                self._log('info', f'Loaded {len(all_gal_eph)} Galileo ephemeris records.')
+            else:
+                self._log('warn',
+                          'No Galileo ephemeris – Galileo satellites will be '
+                          'absent from skyplot.')
 
         # 4. Pseudoranges plot
         self._log('info', 'Plotting pseudoranges …')
@@ -779,7 +796,7 @@ class GnssAnalysisApp:
             self._log('info', 'Plotting skyplot …')
             self._render_plot('Skyplot', plot_skyplot,
                               gnss_meas, all_gps_eph, gps_pvt, file_name,
-                              colors)
+                              colors, all_gal_eph)
 
             # 11. ADR
             adr_m = gnss_meas['AdrM']

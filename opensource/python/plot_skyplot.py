@@ -1,5 +1,7 @@
 """Satellite skyplot – elevation vs azimuth polar plot (PlotSkyplot).
 
+Supports GPS (constellation type 1) and Galileo (constellation type 6).
+
 Author: Frank van Diggelen
 Open Source code for processing Android GNSS Measurements
 """
@@ -28,6 +30,10 @@ from .gps_eph2xyz import gps_eph2xyz
 from .gps_constants import GpsConstants
 from .lla2xyz import lla2xyz
 from .rot_ecef2ned import rot_ecef2ned
+
+# Android GnssStatus.CONSTELLATION_* codes for constellations supported here
+_CONST_GPS     = 1
+_CONST_GALILEO = 6
 
 
 def _el_az_deg(rcv_lla_deg, sv_xyz_m):
@@ -58,29 +64,15 @@ def _el_az_deg(rcv_lla_deg, sv_xyz_m):
     return el_deg, az_deg
 
 
-def plot_skyplot(gnss_meas, all_gps_eph, gps_pvt, pr_file_name='', colors=None):
-    """Plot satellite tracks on a polar elevation-vs-azimuth (skyplot) diagram.
+def _compute_tracks(gnss_meas, all_gps_eph, all_gal_eph, gps_pvt):
+    """Compute per-satellite (el, az) tracks over all epochs.
 
-    The centre of the plot is the zenith (elevation 90°) and the outer ring
-    is the horizon (elevation 0°).  Azimuth is measured clockwise from North.
-    Each satellite is drawn as a coloured track with:
-
-    * a circle (○) marking the first observed position, and
-    * a square (□) marking the most recent position.
-
-    Parameters
-    ----------
-    gnss_meas : dict
-        As returned by ``process_gnss_meas()``.
-    all_gps_eph : list of dict
-        GPS ephemeris records, as returned by
-        ``get_nasa_hourly_ephemeris()``.
-    gps_pvt : dict
-        WLS PVT solution, as returned by ``gps_wls_pvt()``.
-    pr_file_name : str, optional
-        Log-file name shown in the plot title.
-    colors : array_like, shape (M, 3), optional
-        Per-satellite RGB colours that match the other plots.
+    Returns
+    -------
+    el_tracks : list of list of float
+        Elevation track (degrees) per satellite index.
+    az_tracks : list of list of float
+        Azimuth track (degrees) per satellite index.
     """
     m = len(gnss_meas['Svid'])
     const_type = gnss_meas.get('ConstellationType', np.ones(m, dtype=int))
@@ -89,14 +81,6 @@ def plot_skyplot(gnss_meas, all_gps_eph, gps_pvt, pr_file_name='', colors=None):
         gnss_meas['FctSeconds'] / GpsConstants.WEEKSEC
     ).astype(int)
 
-    # ---- assign per-satellite colours consistent with other plots ----------
-    if colors is None or np.asarray(colors).shape != (m, 3):
-        cmap = plt.get_cmap('tab20')
-        colors = np.array([np.array(mcolors.to_rgb(cmap(i % 20))) for i in range(m)])
-    else:
-        colors = np.asarray(colors, dtype=float)
-
-    # ---- collect elevation / azimuth tracks per satellite ------------------
     el_tracks: list[list[float]] = [[] for _ in range(m)]
     az_tracks: list[list[float]] = [[] for _ in range(m)]
 
@@ -109,45 +93,140 @@ def plot_skyplot(gnss_meas, all_gps_eph, gps_pvt, pr_file_name='', colors=None):
         i_valid = np.where(np.isfinite(pr_row))[0]
         if len(i_valid) == 0:
             continue
-        svid_valid = gnss_meas['Svid'][i_valid]
 
-        gps_eph, i_sv = closest_gps_eph(
-            all_gps_eph, svid_valid, gnss_meas['FctSeconds'][i]
+        # Process each supported constellation separately so the correct
+        # ephemeris source is used for each satellite.
+        for const_code, eph_list in (
+            (_CONST_GPS,     all_gps_eph),
+            (_CONST_GALILEO, all_gal_eph),
+        ):
+            if not eph_list:
+                continue
+
+            # Indices in i_valid that belong to this constellation
+            i_const = i_valid[const_type[i_valid] == const_code]
+            if len(i_const) == 0:
+                continue
+
+            svid_const = gnss_meas['Svid'][i_const]
+
+            gps_eph, i_sv = closest_gps_eph(
+                eph_list, svid_const, gnss_meas['FctSeconds'][i]
+            )
+            if not gps_eph:
+                continue
+
+            # Approximate transmission time: t_rx − pseudorange / c
+            idx = i_const[np.asarray(i_sv, dtype=int)]
+            pr_m    = gnss_meas['PrM'][i, idx]
+            trx_sec = gnss_meas['tRxSeconds'][i, idx]
+            ttx_sec = trx_sec - pr_m / GpsConstants.LIGHTSPEED
+
+            gps_time = np.column_stack([
+                np.full(len(gps_eph), float(week_num[i])),
+                ttx_sec,
+            ])
+
+            sv_xyz, _ = gps_eph2xyz(gps_eph, gps_time)   # (k, 3)
+
+            el_arr, az_arr = _el_az_deg(lla, sv_xyz)
+
+            for k in range(len(gps_eph)):
+                j_m = int(i_const[i_sv[k]])           # index in M dimension
+                if el_arr[k] >= 0.0:                  # above horizon only
+                    el_tracks[j_m].append(float(el_arr[k]))
+                    az_tracks[j_m].append(float(az_arr[k]))
+
+    return el_tracks, az_tracks
+
+
+def _draw_elevation_rings(ax):
+    """Draw the polar grid and add elevation labels on each ring.
+
+    The skyplot uses r = 90 − elevation, so:
+
+    * r = 0  →  elevation 90° (zenith)
+    * r = 30 →  elevation 60°
+    * r = 60 →  elevation 30°
+    * r = 90 →  elevation  0° (horizon)
+
+    Labels are placed at azimuth = 5° (just east of North) directly on each
+    ring so they read as "elevation 60°", "30°", "0°" from inside out.
+    """
+    ax.set_ylim(0, 90)
+    ax.set_yticks([30, 60, 90])
+    # Hide the default matplotlib radial tick labels; we add our own below.
+    ax.set_yticklabels([])
+
+    # Annotate each ring with the corresponding elevation angle.
+    # Using a small positive azimuth keeps the text clear of the N label.
+    label_az_rad = np.radians(5)
+    for r_val, el_val in [(30, 60), (60, 30), (90, 0)]:
+        ax.text(
+            label_az_rad, r_val,
+            f'{el_val}°',
+            fontsize=7,
+            ha='left',
+            va='center',
+            color='gray',
+            zorder=2,
         )
-        if not gps_eph:
-            continue
 
-        # approximate transmission time: t_rx − pseudorange / c
-        idx = i_valid[np.asarray(i_sv, dtype=int)]
-        pr_m = gnss_meas['PrM'][i, idx]
-        trx_sec = gnss_meas['tRxSeconds'][i, idx]
-        ttx_sec = trx_sec - pr_m / GpsConstants.LIGHTSPEED
 
-        gps_time = np.column_stack([
-            np.full(len(gps_eph), float(week_num[i])),
-            ttx_sec,
-        ])
+def plot_skyplot(gnss_meas, all_gps_eph, gps_pvt, pr_file_name='',
+                 colors=None, all_gal_eph=None):
+    """Plot satellite tracks on a polar elevation-vs-azimuth (skyplot) diagram.
 
-        sv_xyz, _ = gps_eph2xyz(gps_eph, gps_time)   # (k, 3)
+    The centre of the plot is the zenith (elevation 90°) and the outer ring
+    is the horizon (elevation 0°).  Azimuth is measured clockwise from North.
+    Each satellite is drawn as a coloured track with:
 
-        el_arr, az_arr = _el_az_deg(lla, sv_xyz)
+    * a circle (○) marking the first observed position, and
+    * a square (□) marking the most recent position.
 
-        for k in range(len(gps_eph)):
-            j_m = int(i_valid[i_sv[k]])               # index in M dimension
-            if el_arr[k] >= 0.0:                      # above horizon only
-                el_tracks[j_m].append(float(el_arr[k]))
-                az_tracks[j_m].append(float(az_arr[k]))
+    Elevation angle labels are placed on each concentric ring.
+
+    Parameters
+    ----------
+    gnss_meas : dict
+        As returned by ``process_gnss_meas()``.
+    all_gps_eph : list of dict
+        GPS ephemeris records, as returned by ``get_nasa_hourly_ephemeris()``.
+    gps_pvt : dict
+        WLS PVT solution, as returned by ``gps_wls_pvt()``.
+    pr_file_name : str, optional
+        Log-file name shown in the plot title.
+    colors : array_like, shape (M, 3), optional
+        Per-satellite RGB colours that match the other plots.
+    all_gal_eph : list of dict, optional
+        Galileo ephemeris records, as returned by
+        ``get_galileo_ephemeris()``.  When provided, Galileo satellites
+        (``ConstellationType == 6``) are included in the skyplot.
+    """
+    if all_gal_eph is None:
+        all_gal_eph = []
+
+    m = len(gnss_meas['Svid'])
+    const_type = gnss_meas.get('ConstellationType', np.ones(m, dtype=int))
+
+    # ---- assign per-satellite colours consistent with other plots ----------
+    if colors is None or np.asarray(colors).shape != (m, 3):
+        cmap = plt.get_cmap('tab20')
+        colors = np.array([np.array(mcolors.to_rgb(cmap(i % 20))) for i in range(m)])
+    else:
+        colors = np.asarray(colors, dtype=float)
+
+    # ---- compute elevation / azimuth tracks --------------------------------
+    el_tracks, az_tracks = _compute_tracks(
+        gnss_meas, all_gps_eph, all_gal_eph, gps_pvt
+    )
 
     # ---- draw polar plot ---------------------------------------------------
     ax = plt.subplot(1, 1, 1, projection='polar')
     ax.set_theta_zero_location('N')    # 0° (North) at the top
     ax.set_theta_direction(-1)         # azimuth increases clockwise
 
-    # r = 90 - elevation  →  r=0 ≡ zenith, r=90 ≡ horizon
-    ax.set_ylim(0, 90)
-    ax.set_yticks([30, 60, 90])
-    ax.set_yticklabels(['60°', '30°', '0°'], fontsize=7)
-    ax.set_rlabel_position(45)
+    _draw_elevation_rings(ax)
 
     any_plotted = False
     for j in range(m):

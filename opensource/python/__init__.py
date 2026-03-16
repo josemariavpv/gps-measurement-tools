@@ -38,7 +38,9 @@ from .utc2gps                 import utc2gps
 from .gps2utc                 import gps2utc
 from .kepler                  import kepler
 from .read_rinex_nav          import read_rinex_nav
+from .read_rinex3_nav         import read_rinex3_nav
 from .get_nasa_hourly_ephemeris import get_nasa_hourly_ephemeris
+from .get_galileo_ephemeris   import get_galileo_ephemeris
 from .gps_eph2dtsv            import gps_eph2dtsv
 from .gps_eph2xyz             import gps_eph2xyz
 from .gps_eph2pvt             import gps_eph2pvt
@@ -63,6 +65,7 @@ from .plot_pvt                import plot_pvt
 from .plot_pvt_states         import plot_pvt_states
 from .plot_adr                import plot_adr
 from .plot_adr_resids         import plot_adr_resids
+from .plot_skyplot            import plot_skyplot
 from .read_rinex_obs          import read_rinex_obs, get_signal_strength
 from .plot_rinex_quality      import (plot_rinex_visibility,
                                       plot_rinex_availability,
