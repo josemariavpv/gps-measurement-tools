@@ -95,6 +95,7 @@ _TAB_NAMES = [
     'PVT States',
     'ADR',
     'ADR Residuals',
+    'Skyplot',
 ]
 
 # RINEX quality analysis tabs (added separately from the main pipeline tabs)
@@ -718,6 +719,7 @@ class GnssAnalysisApp:
         plot_pvt_states         = _im('plot_pvt_states').plot_pvt_states
         plot_adr                = _im('plot_adr').plot_adr
         plot_adr_resids         = _im('plot_adr_resids').plot_adr_resids
+        plot_skyplot            = _im('plot_skyplot').plot_skyplot
 
         # 1. Read log file
         self._log('info', 'Reading log file …')
@@ -773,7 +775,13 @@ class GnssAnalysisApp:
             self._render_plot('PVT States', plot_pvt_states,
                               gps_pvt, file_name)
 
-            # 10. ADR
+            # 10. Skyplot
+            self._log('info', 'Plotting skyplot …')
+            self._render_plot('Skyplot', plot_skyplot,
+                              gnss_meas, all_gps_eph, gps_pvt, file_name,
+                              colors)
+
+            # 11. ADR
             adr_m = gnss_meas['AdrM']
             has_adr = bool(np.any(np.isfinite(adr_m) & (adr_m != 0)))
             if has_adr:
