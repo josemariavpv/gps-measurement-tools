@@ -1,0 +1,4 @@
+matplotlib>=3.5
+mplcursors>=0.5
+numpy>=1.21
+scipy>=1.7

@@ -38,12 +38,20 @@ import queue
 import threading
 import traceback
 import importlib
+from typing import Any
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 import matplotlib
 from matplotlib.figure import Figure
+
+try:
+    import mplcursors as _mplcursors
+    _HAS_MPLCURSORS = True
+except ImportError:  # pragma: no cover
+    _mplcursors = None
+    _HAS_MPLCURSORS = False
 
 # ---------------------------------------------------------------------------
 # Path constants – needed so sibling modules can be imported whether this
@@ -132,6 +140,9 @@ class GnssAnalysisApp:
         self._canvases: dict[str, FigureCanvasTkAgg] = {}
         self._rinex_figures: dict[str, Figure] = {}
         self._rinex_canvases: dict[str, FigureCanvasTkAgg] = {}
+        # mplcursors hover-tooltip handles (one per tab, replaced on each render)
+        self._cursors: dict[str, Any] = {}
+        self._rinex_cursors: dict[str, Any] = {}
 
         self._build_ui()
         self._poll_message_queue()
@@ -587,6 +598,14 @@ class GnssAnalysisApp:
         from matplotlib._pylab_helpers import Gcf
         from matplotlib.backend_bases import FigureManagerBase
 
+        # Remove the previous hover cursor for this tab before clearing the figure
+        old_cursor = self._rinex_cursors.pop(tab_name, None)
+        if old_cursor is not None and _HAS_MPLCURSORS:
+            try:
+                old_cursor.remove()
+            except Exception as exc:
+                self._log('warn', f'Could not remove old cursor for {tab_name}: {exc}')
+
         fig = self._rinex_figures[tab_name]
         fig.clf()
 
@@ -599,6 +618,11 @@ class GnssAnalysisApp:
 
         plot_fn(*args)
         fig.canvas.draw_idle()
+
+        # Attach hover-cursor so users can inspect data values by hovering
+        if _HAS_MPLCURSORS:
+            self._rinex_cursors[tab_name] = _mplcursors.cursor(fig, hover=True)
+
         self.root.after(0, lambda f=tab_name: self._rinex_canvases[f].draw())
 
     # ------------------------------------------------------------------
@@ -784,6 +808,14 @@ class GnssAnalysisApp:
         from matplotlib._pylab_helpers import Gcf
         from matplotlib.backend_bases import FigureManagerBase
 
+        # Remove the previous hover cursor for this tab before clearing the figure
+        old_cursor = self._cursors.pop(tab_name, None)
+        if old_cursor is not None and _HAS_MPLCURSORS:
+            try:
+                old_cursor.remove()
+            except Exception as exc:
+                self._log('warn', f'Could not remove old cursor for {tab_name}: {exc}')
+
         fig = self._figures[tab_name]
         fig.clf()
 
@@ -803,6 +835,10 @@ class GnssAnalysisApp:
 
         result = plot_fn(*args)
         fig.canvas.draw_idle()
+
+        # Attach hover-cursor so users can inspect data values by hovering
+        if _HAS_MPLCURSORS:
+            self._cursors[tab_name] = _mplcursors.cursor(fig, hover=True)
 
         # Schedule canvas refresh on the main thread
         self.root.after(0, lambda f=tab_name: self._canvases[f].draw())
