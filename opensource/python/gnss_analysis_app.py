@@ -38,12 +38,20 @@ import queue
 import threading
 import traceback
 import importlib
+from typing import Any
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 
 import matplotlib
 from matplotlib.figure import Figure
+
+try:
+    import mplcursors as _mplcursors
+    _HAS_MPLCURSORS = True
+except ImportError:  # pragma: no cover
+    _mplcursors = None
+    _HAS_MPLCURSORS = False
 
 # ---------------------------------------------------------------------------
 # Path constants – needed so sibling modules can be imported whether this
@@ -87,6 +95,7 @@ _TAB_NAMES = [
     'PVT States',
     'ADR',
     'ADR Residuals',
+    'Skyplot',
 ]
 
 # RINEX quality analysis tabs (added separately from the main pipeline tabs)
@@ -132,6 +141,9 @@ class GnssAnalysisApp:
         self._canvases: dict[str, FigureCanvasTkAgg] = {}
         self._rinex_figures: dict[str, Figure] = {}
         self._rinex_canvases: dict[str, FigureCanvasTkAgg] = {}
+        # mplcursors hover-tooltip handles (one per tab, replaced on each render)
+        self._cursors: dict[str, Any] = {}
+        self._rinex_cursors: dict[str, Any] = {}
 
         self._build_ui()
         self._poll_message_queue()
@@ -587,6 +599,14 @@ class GnssAnalysisApp:
         from matplotlib._pylab_helpers import Gcf
         from matplotlib.backend_bases import FigureManagerBase
 
+        # Remove the previous hover cursor for this tab before clearing the figure
+        old_cursor = self._rinex_cursors.pop(tab_name, None)
+        if old_cursor is not None and _HAS_MPLCURSORS:
+            try:
+                old_cursor.remove()
+            except Exception as exc:
+                self._log('warn', f'Could not remove old cursor for {tab_name}: {exc}')
+
         fig = self._rinex_figures[tab_name]
         fig.clf()
 
@@ -599,6 +619,11 @@ class GnssAnalysisApp:
 
         plot_fn(*args)
         fig.canvas.draw_idle()
+
+        # Attach hover-cursor so users can inspect data values by hovering
+        if _HAS_MPLCURSORS:
+            self._rinex_cursors[tab_name] = _mplcursors.cursor(fig, hover=True)
+
         self.root.after(0, lambda f=tab_name: self._rinex_canvases[f].draw())
 
     # ------------------------------------------------------------------
@@ -683,6 +708,7 @@ class GnssAnalysisApp:
         read_gnss_logger        = _im('read_gnss_logger').read_gnss_logger
         gps2utc                 = _im('gps2utc').gps2utc
         get_nasa_hourly_ephemeris = _im('get_nasa_hourly_ephemeris').get_nasa_hourly_ephemeris
+        get_galileo_ephemeris   = _im('get_galileo_ephemeris').get_galileo_ephemeris
         process_gnss_meas       = _im('process_gnss_meas').process_gnss_meas
         gps_wls_pvt             = _im('gps_wls_pvt').gps_wls_pvt
         process_adr             = _im('process_adr').process_adr
@@ -694,6 +720,7 @@ class GnssAnalysisApp:
         plot_pvt_states         = _im('plot_pvt_states').plot_pvt_states
         plot_adr                = _im('plot_adr').plot_adr
         plot_adr_resids         = _im('plot_adr_resids').plot_adr_resids
+        plot_skyplot            = _im('plot_skyplot').plot_skyplot
 
         # 1. Read log file
         self._log('info', 'Reading log file …')
@@ -716,6 +743,22 @@ class GnssAnalysisApp:
         # 3. Process raw measurements
         self._log('info', 'Processing raw GNSS measurements …')
         gnss_meas = process_gnss_meas(gnss_raw)
+
+        # 3b. Galileo ephemeris – fetched only when Galileo sats are present
+        # (best-effort; graceful fallback on any failure)
+        _CONST_GALILEO = 6
+        all_gal_eph = []
+        const_types = gnss_meas.get('ConstellationType',
+                                    np.ones(len(gnss_meas['Svid']), dtype=int))
+        if _CONST_GALILEO in const_types:
+            self._log('info', 'Galileo satellites detected – fetching Galileo ephemeris …')
+            all_gal_eph, _ = get_galileo_ephemeris(utc_time, dir_name)
+            if all_gal_eph:
+                self._log('info', f'Loaded {len(all_gal_eph)} Galileo ephemeris records.')
+            else:
+                self._log('warn',
+                          'No Galileo ephemeris – Galileo satellites will be '
+                          'absent from skyplot.')
 
         # 4. Pseudoranges plot
         self._log('info', 'Plotting pseudoranges …')
@@ -749,7 +792,13 @@ class GnssAnalysisApp:
             self._render_plot('PVT States', plot_pvt_states,
                               gps_pvt, file_name)
 
-            # 10. ADR
+            # 10. Skyplot
+            self._log('info', 'Plotting skyplot …')
+            self._render_plot('Skyplot', plot_skyplot,
+                              gnss_meas, all_gps_eph, gps_pvt, file_name,
+                              colors, all_gal_eph)
+
+            # 11. ADR
             adr_m = gnss_meas['AdrM']
             has_adr = bool(np.any(np.isfinite(adr_m) & (adr_m != 0)))
             if has_adr:
@@ -784,6 +833,14 @@ class GnssAnalysisApp:
         from matplotlib._pylab_helpers import Gcf
         from matplotlib.backend_bases import FigureManagerBase
 
+        # Remove the previous hover cursor for this tab before clearing the figure
+        old_cursor = self._cursors.pop(tab_name, None)
+        if old_cursor is not None and _HAS_MPLCURSORS:
+            try:
+                old_cursor.remove()
+            except Exception as exc:
+                self._log('warn', f'Could not remove old cursor for {tab_name}: {exc}')
+
         fig = self._figures[tab_name]
         fig.clf()
 
@@ -803,6 +860,10 @@ class GnssAnalysisApp:
 
         result = plot_fn(*args)
         fig.canvas.draw_idle()
+
+        # Attach hover-cursor so users can inspect data values by hovering
+        if _HAS_MPLCURSORS:
+            self._cursors[tab_name] = _mplcursors.cursor(fig, hover=True)
 
         # Schedule canvas refresh on the main thread
         self.root.after(0, lambda f=tab_name: self._canvases[f].draw())

@@ -754,5 +754,214 @@ class TestGetSignalStrength(unittest.TestCase):
         self.assertIsNone(arr)
 
 
+# ===========================================================================
+# 10. ReadRinex3Nav / read_rinex3_nav
+# ===========================================================================
+
+# Generate a minimal syntactically-correct RINEX 3.03 mixed nav file for tests
+def _make_rinex3_nav_content():
+    """Return RINEX 3 mixed nav file content as a string with proper field widths."""
+    def fmt(v):
+        return f'{v:19.12E}'
+
+    lines = [
+        '     3              N: GNSS NAV DATA    M (Mixed)       RINEX VERSION / TYPE',
+        'test-gen                                20240101 000000 UTC PGM / RUN BY / DATE ',
+        '                                                            END OF HEADER       ',
+        # GPS G05
+        f'G05 2016 07 01 00 00 00{fmt(-1.234567890123E-04)}{fmt(-4.547473509E-13)}{fmt(0.0)}',
+        f'    {fmt(56.0)}{fmt(-18.75)}{fmt(4.013839662E-09)}{fmt(-2.534413793E+00)}',
+        f'    {fmt(-9.894371033E-07)}{fmt(6.042484730E-04)}{fmt(8.731335402E-06)}{fmt(5.153644810E+03)}',
+        f'    {fmt(8.640000000000E+04)}{fmt(1.117587090E-08)}{fmt(2.660049481E+00)}{fmt(-7.450580597E-09)}',
+        f'    {fmt(9.780082440E-01)}{fmt(2.028125000E+02)}{fmt(-2.394813547E+00)}{fmt(-5.292316957E-09)}',
+        f'    {fmt(-1.059648892E-10)}{fmt(1.0)}{fmt(1901.0)}{fmt(0.0)}',
+        f'    {fmt(2.0)}{fmt(0.0)}{fmt(-1.862645150E-09)}{fmt(56.0)}',
+        f'    {fmt(87018.0)}{fmt(4.0)}{fmt(0.0)}{fmt(0.0)}',
+        # Galileo E01
+        f'E01 2016 07 01 00 00 00{fmt(-2.832621339709E-04)}{fmt(-1.637534601418E-12)}{fmt(0.0)}',
+        f'    {fmt(55.0)}{fmt(-17.8125)}{fmt(2.880398800351E-09)}{fmt(-8.283929714350E-01)}',
+        f'    {fmt(-8.456408977509E-07)}{fmt(6.042484729737E-04)}{fmt(8.731335401535E-06)}{fmt(5.440614395142E+03)}',
+        f'    {fmt(8.640000000000E+04)}{fmt(1.117587089539E-08)}{fmt(2.660049480930E+00)}{fmt(1.117587089539E-08)}',
+        f'    {fmt(9.780082440374E-01)}{fmt(2.028125000000E+02)}{fmt(-2.394813547099E+00)}{fmt(-5.292316956916E-09)}',
+        f'    {fmt(-1.059648891945E-10)}{fmt(516.0)}{fmt(1901.0)}{fmt(0.0)}',
+        f'    {fmt(3.12)}{fmt(0.0)}{fmt(-1.862645149231E-09)}{fmt(-5.587935447693E-09)}',
+        f'    {fmt(87018.0)}{fmt(0.0)}{fmt(0.0)}{fmt(0.0)}',
+        # Galileo E03 (unhealthy: health > 0)
+        f'E03 2016 07 01 02 00 00{fmt(-1.1E-05)}{fmt(-8.881784197E-16)}{fmt(0.0)}',
+        f'    {fmt(66.0)}{fmt(-20.0)}{fmt(3.1E-09)}{fmt(-1.0)}',
+        f'    {fmt(-9.0E-07)}{fmt(5.5E-04)}{fmt(9.0E-06)}{fmt(5.5E+03)}',
+        f'    {fmt(9.640000000000E+04)}{fmt(2.0E-08)}{fmt(2.7)}{fmt(2.0E-08)}',
+        f'    {fmt(9.8E-01)}{fmt(210.0)}{fmt(-2.4)}{fmt(-5.3E-09)}',
+        f'    {fmt(-1.06E-10)}{fmt(516.0)}{fmt(1901.0)}{fmt(0.0)}',
+        f'    {fmt(7.0)}{fmt(0.0)}{fmt(-1.86E-09)}{fmt(-5.58E-09)}',  # health=7 (bad)
+        f'    {fmt(87000.0)}{fmt(0.0)}{fmt(0.0)}{fmt(0.0)}',
+    ]
+    return '\n'.join(lines) + '\n'
+
+
+_RINEX3_NAV_CONTENT = _make_rinex3_nav_content()
+
+
+class TestReadRinex3Nav(unittest.TestCase):
+    """Verify read_rinex3_nav() with a synthetic RINEX 3 mixed nav file."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile, gzip as _gzip
+        from python.read_rinex3_nav import read_rinex3_nav
+
+        # Write a plain-text RINEX 3 nav file to a temp file
+        cls._tmp = tempfile.NamedTemporaryFile(
+            suffix='.rnx', mode='w', delete=False)
+        cls._tmp.write(_RINEX3_NAV_CONTENT)
+        cls._tmp.close()
+        cls._tmp_gz = cls._tmp.name + '.gz'
+        with open(cls._tmp.name, 'rb') as fin, \
+             _gzip.open(cls._tmp_gz, 'wb') as fout:
+            fout.write(fin.read())
+
+        cls.gps, cls.gal = read_rinex3_nav(cls._tmp.name)
+        cls.gps_gz, cls.gal_gz = read_rinex3_nav(cls._tmp_gz)
+
+    @classmethod
+    def tearDownClass(cls):
+        import os as _os
+        for p in (cls._tmp.name, cls._tmp_gz):
+            try:
+                _os.remove(p)
+            except OSError:
+                pass
+
+    def test_gps_count(self):
+        """Parser must find exactly 1 GPS record."""
+        self.assertEqual(len(self.gps), 1)
+
+    def test_gal_count(self):
+        """Parser must find exactly 2 Galileo records."""
+        self.assertEqual(len(self.gal), 2)
+
+    def test_gps_prn(self):
+        """GPS record PRN must be 5."""
+        self.assertEqual(self.gps[0]['PRN'], 5)
+
+    def test_gal_prns(self):
+        """Galileo PRNs must be 1 and 3."""
+        prns = {e['PRN'] for e in self.gal}
+        self.assertEqual(prns, {1, 3})
+
+    def test_gps_week(self):
+        """GPS_Week for all records must be 1901."""
+        self.assertEqual(self.gps[0]['GPS_Week'], 1901.0)
+        for e in self.gal:
+            self.assertEqual(e['GPS_Week'], 1901.0)
+
+    def test_toe_value(self):
+        """Toe for G05 and E01 must be 86400 s (0h of day 2)."""
+        self.assertAlmostEqual(self.gps[0]['Toe'], 86400.0, places=0)
+        e01 = next(e for e in self.gal if e['PRN'] == 1)
+        self.assertAlmostEqual(e01['Toe'], 86400.0, places=0)
+
+    def test_galileo_health_field(self):
+        """E03 health field must equal 7 (unhealthy)."""
+        e03 = next(e for e in self.gal if e['PRN'] == 3)
+        self.assertAlmostEqual(e03['health'], 7.0, places=0)
+
+    def test_all_required_fields_present(self):
+        """Every ephemeris dict must contain the standard orbital fields."""
+        required = {'PRN', 'Toc', 'af0', 'af1', 'af2', 'IODE', 'Crs',
+                    'Delta_n', 'M0', 'e', 'Asqrt', 'Toe', 'OMEGA', 'i0',
+                    'omega', 'OMEGA_DOT', 'IDOT', 'GPS_Week', 'health', 'TGD'}
+        for e in self.gps + self.gal:
+            missing = required - set(e.keys())
+            self.assertFalse(missing, f'Missing fields in PRN {e["PRN"]}: {missing}')
+
+    def test_gzip_same_as_plain(self):
+        """Gzip-compressed file must parse identically to the plain-text file."""
+        self.assertEqual(len(self.gps_gz), len(self.gps))
+        self.assertEqual(len(self.gal_gz), len(self.gal))
+        self.assertEqual(self.gps_gz[0]['PRN'], self.gps[0]['PRN'])
+
+    def test_missing_file_raises(self):
+        """Parser must raise FileNotFoundError for a non-existent path."""
+        from python.read_rinex3_nav import read_rinex3_nav
+        with self.assertRaises(FileNotFoundError):
+            read_rinex3_nav('/nonexistent/file.rnx')
+
+
+# ===========================================================================
+# 11. PlotSkyplot – elevation ring labels and Galileo parameter
+# ===========================================================================
+
+class TestPlotSkyplot(unittest.TestCase):
+    """Verify that plot_skyplot produces correct elevation ring labels."""
+
+    @classmethod
+    def setUpClass(cls):
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        cls.plt = plt
+
+        _DEMO = os.path.join(_DEMO_DIR,
+                             'pseudoranges_log_2016_06_30_21_26_07.txt')
+        _EPH  = os.path.join(_DEMO_DIR, 'hour1820.16n')
+
+        if not os.path.isfile(_DEMO) or not os.path.isfile(_EPH):
+            raise unittest.SkipTest('Demo files not found')
+
+        P = _import_python()
+        gnss_raw, _ = P.read_gnss_logger(
+            _DEMO_DIR, 'pseudoranges_log_2016_06_30_21_26_07.txt',
+            P.set_data_filter())
+        gnss_meas = P.process_gnss_meas(gnss_raw)
+        gps_eph, _ = P.read_rinex_nav(_EPH)
+        gps_pvt = P.gps_wls_pvt(gnss_meas, gps_eph)
+
+        cls.gnss_meas = gnss_meas
+        cls.gps_eph   = gps_eph
+        cls.gps_pvt   = gps_pvt
+
+    def _make_skyplot(self, **kwargs):
+        self.plt.close('all')
+        self.plt.figure(figsize=(6, 6))
+        from python.plot_skyplot import plot_skyplot
+        plot_skyplot(self.gnss_meas, self.gps_eph, self.gps_pvt,
+                     'test', **kwargs)
+        return self.plt.gca()
+
+    def test_elevation_ring_labels_present(self):
+        """Each concentric ring must carry a visible elevation label."""
+        ax = self._make_skyplot()
+        label_texts = {t.get_text() for t in ax.texts}
+        for expected in ('0°', '30°', '60°'):
+            self.assertIn(expected, label_texts,
+                          f'Missing elevation ring label "{expected}"')
+
+    def test_ytick_labels_hidden(self):
+        """Default matplotlib radial tick labels must be suppressed."""
+        ax = self._make_skyplot()
+        default_labels = [t.get_text() for t in ax.get_yticklabels()
+                          if t.get_text()]
+        self.assertEqual(default_labels, [],
+                         'Default ytick labels should be hidden')
+
+    def test_accepts_empty_gal_eph(self):
+        """plot_skyplot must not raise when all_gal_eph=[]."""
+        try:
+            self._make_skyplot(all_gal_eph=[])
+        except Exception as exc:
+            self.fail(f'plot_skyplot raised {exc} with empty all_gal_eph')
+
+    def test_accepts_none_gal_eph(self):
+        """plot_skyplot must not raise when all_gal_eph=None (default)."""
+        try:
+            self._make_skyplot()
+        except Exception as exc:
+            self.fail(f'plot_skyplot raised {exc} with default all_gal_eph')
+
+    def tearDown(self):
+        self.plt.close('all')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
